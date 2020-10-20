@@ -23,6 +23,7 @@ package org.apache.iotdb.db.engine.storagegroup;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -46,7 +47,6 @@ import org.apache.iotdb.db.exception.metadata.MetadataException;
 import org.apache.iotdb.db.exception.query.OutOfTTLException;
 import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.metadata.PartialPath;
-import org.apache.iotdb.db.metadata.mnode.MNode;
 import org.apache.iotdb.db.metadata.mnode.MeasurementMNode;
 import org.apache.iotdb.db.metadata.mnode.StorageGroupMNode;
 import org.apache.iotdb.db.qp.Planner;
@@ -128,7 +128,8 @@ public class TTLTest {
 
     // normally set ttl
     IoTDB.metaManager.setTTL(new PartialPath(sg1), ttl);
-    StorageGroupMNode mNode = IoTDB.metaManager.getStorageGroupNodeByStorageGroupPath(new PartialPath(sg1));
+    StorageGroupMNode mNode = IoTDB.metaManager
+        .getStorageGroupNodeByStorageGroupPath(new PartialPath(sg1));
     assertEquals(ttl, mNode.getDataTTL());
 
     // default ttl
@@ -145,8 +146,9 @@ public class TTLTest {
     plan.setMeasurements(new String[]{"s1"});
     plan.setDataTypes(new TSDataType[]{TSDataType.INT64});
     plan.setValues(new Object[]{1L});
-    plan.setMNodesAndTransferType(new MeasurementMNode[]{new MeasurementMNode(null, null,
-            new MeasurementSchema("s1", TSDataType.INT64, TSEncoding.PLAIN), null)});
+    plan.setMeasurementMNodes(new MeasurementMNode[]{new MeasurementMNode(null, null,
+        new MeasurementSchema("s1", TSDataType.INT64, TSEncoding.PLAIN), null)});
+    plan.transferType();
 
     // ok without ttl
     insertToStorageGroupProcessor(plan);
@@ -173,8 +175,9 @@ public class TTLTest {
     plan.setMeasurements(new String[]{"s1"});
     plan.setDataTypes(new TSDataType[]{TSDataType.INT64});
     plan.setValues(new Object[]{1L});
-    plan.setMNodesAndTransferType(new MeasurementMNode[]{new MeasurementMNode(null, null,
-            new MeasurementSchema("s1", TSDataType.INT64, TSEncoding.PLAIN), null)});
+    plan.setMeasurementMNodes(new MeasurementMNode[]{new MeasurementMNode(null, null,
+        new MeasurementSchema("s1", TSDataType.INT64, TSEncoding.PLAIN), null)});
+    plan.transferType();
 
     long initTime = System.currentTimeMillis();
     // sequence data
@@ -236,8 +239,8 @@ public class TTLTest {
     assertTrue(cnt <= 1000);
 
     storageGroupProcessor.setDataTTL(0);
-    dataSource = storageGroupProcessor.query(new PartialPath(sg1), s1, EnvironmentUtils.TEST_QUERY_CONTEXT
-        , null, null);
+    dataSource = storageGroupProcessor
+        .query(new PartialPath(sg1), s1, EnvironmentUtils.TEST_QUERY_CONTEXT, null, null);
     seqResource = dataSource.getSeqResources();
     unseqResource = dataSource.getUnseqResources();
     assertEquals(0, seqResource.size());
@@ -342,7 +345,8 @@ public class TTLTest {
     sgs.add("root.sg3");
     plan = (ShowTTLPlan) planner
         .parseSQLToPhysicalPlan("SHOW TTL ON root.sg1,root.sg2,root.sg3");
-    assertEquals(sgs, plan.getStorageGroups().stream().map(PartialPath::getFullPath).collect(Collectors.toList()));
+    assertEquals(sgs, plan.getStorageGroups().stream().map(PartialPath::getFullPath)
+        .collect(Collectors.toList()));
   }
 
   @Test
@@ -354,13 +358,18 @@ public class TTLTest {
     ShowTTLPlan plan = new ShowTTLPlan(Collections.emptyList());
     PlanExecutor executor = new PlanExecutor();
     QueryDataSet queryDataSet = executor.processQuery(plan, EnvironmentUtils.TEST_QUERY_CONTEXT);
-    RowRecord rowRecord = queryDataSet.next();
-    assertEquals(sg1, rowRecord.getFields().get(0).getStringValue());
-    assertEquals(ttl, rowRecord.getFields().get(1).getLongV());
 
-    rowRecord = queryDataSet.next();
-    assertEquals(sg2, rowRecord.getFields().get(0).getStringValue());
-    assertNull(rowRecord.getFields().get(1));
+    while (queryDataSet.hasNext()) {
+      RowRecord rowRecord = queryDataSet.next();
+      String sg = rowRecord.getFields().get(0).getStringValue();
+      if (sg.equals(sg1)) {
+        assertEquals(ttl, rowRecord.getFields().get(1).getLongV());
+      } else if (sg.equals(sg2)) {
+        assertNull(rowRecord.getFields().get(1));
+      } else {
+        fail();
+      }
+    }
   }
 
   @Test
