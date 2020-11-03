@@ -316,9 +316,6 @@ public class TsFileSequenceReader implements AutoCloseable {
       metadataIndexPair = getMetadataAndEndOffset(metadataIndexNode,
           path.getMeasurement(), MetadataIndexNodeType.INTERNAL_MEASUREMENT);
     }
-    if (metadataIndexPair == null) {
-      return null;
-    }
     List<TimeseriesMetadata> timeseriesMetadataList = new ArrayList<>();
     buffer = readData(metadataIndexPair.left.getOffset(), metadataIndexPair.right);
     while (buffer.hasRemaining()) {
